@@ -219,6 +219,17 @@ function App() {
                   Cancel
                 </button>
               )}
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-md border px-3 text-sm hover:bg-accent"
+                onClick={() => {
+                  const t = from;
+                  setFrom(to);
+                  setTo(t);
+                }}
+                title="Swap languages"
+              >
+                ↔︎ Swap
+              </button>
             </div>
           </div>
 
@@ -243,6 +254,48 @@ function App() {
               className="min-h-[48vh] md:min-h-[64vh] rounded-2xl border bg-background p-4 shadow-sm"
               value={output}
             />
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                onClick={async () => output && (await navigator.clipboard.writeText(output))}
+                disabled={!output}
+              >
+                Copy
+              </button>
+              <button
+                className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                onClick={() => {
+                  if (!output) return;
+                  const blob = new Blob([output], { type: "text/plain;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "translation.txt";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                disabled={!output}
+              >
+                Save .txt
+              </button>
+              <button
+                className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                onClick={() => {
+                  if (!output) return;
+                  const md = `# Translation\n\n${output}`;
+                  const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "translation.md";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                disabled={!output}
+              >
+                Save .md
+              </button>
+            </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full bg-primary transition-all"
