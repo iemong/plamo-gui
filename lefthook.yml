@@ -1,0 +1,14 @@
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      run: bun run lint
+    types:
+      run: bun run check-types
+
+# pre-push でビルド確認をしたい場合はコメント解除
+# pre-push:
+#   commands:
+#     build:
+#       run: bun run build
+

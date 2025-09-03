@@ -1,0 +1,35 @@
+{
+  "name": "plamo-gui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "lint": "oxlint src --max-warnings=0",
+    "lint:fix": "oxlint src --fix",
+    "check-types": "tsc -p tsconfig.json --noEmit",
+    "prepare": "lefthook install || true"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.12",
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^4.6.0",
+    "lefthook": "^1.12.3",
+    "oxlint": "^1.14.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.12",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}
