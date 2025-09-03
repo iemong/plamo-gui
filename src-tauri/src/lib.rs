@@ -19,7 +19,7 @@ pub struct Settings {
 pub struct PlamoCfg { pub precision: String, pub server: bool }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DoubleCopy { pub enabled: bool, pub paste_mode: String }
+pub struct DoubleCopy { pub enabled: bool, pub paste_mode: String, pub auto_copy: bool }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -29,7 +29,7 @@ impl Default for Settings {
             style_preset: "business".into(),
             glossary_path: None,
             timeout_ms: 60_000,
-            double_copy: DoubleCopy { enabled: true, paste_mode: "popup".into() },
+            double_copy: DoubleCopy { enabled: true, paste_mode: "popup".into(), auto_copy: false },
         }
     }
 }
