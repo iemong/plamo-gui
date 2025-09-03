@@ -125,9 +125,9 @@ function App() {
         input: text,
         from: from === "auto" ? null : from,
         to,
-        precision: null,
-        style: null,
-        glossary: null,
+        precision: settings?.plamo.precision ?? null,
+        style: settings?.style_preset ?? null,
+        glossary: settings?.glossary_path ?? null,
       },
     }).catch(() => {
       setStatus("error");
