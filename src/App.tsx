@@ -123,15 +123,30 @@ function App() {
       setMiniOpen(false);
     });
     listeners.current = [u1, u2, uFinal, u3];
+    // Map language codes to CLI-expected labels
+    const mapLang = (v: string | null | undefined) => {
+      if (!v || v === "auto") return null;
+      switch (v) {
+        case "ja":
+          return "Japanese";
+        case "en":
+          return "English";
+        case "zh":
+          return "Chinese";
+        default:
+          return v;
+      }
+    };
+
     await invoke("translate_plamo", {
       opts: {
         id,
         input: text,
-        from: from === "auto" ? null : from,
-        to,
+        from: mapLang(from),
+        to: mapLang(to) ?? "Japanese",
         precision: settings?.plamo.precision ?? null,
-        style: settings?.style_preset ?? null,
-        glossary: settings?.glossary_path ?? null,
+        style: null,
+        glossary: null,
       },
     }).catch(() => {
       setStatus("error");

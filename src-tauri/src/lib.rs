@@ -92,13 +92,8 @@ async fn translate_plamo(
     if let Some(p) = &opts.precision {
         cmd.arg("--precision").arg(p);
     }
-    if let Some(s) = &opts.style {
-        cmd.arg("--style").arg(s);
-    }
-    if let Some(g) = &opts.glossary {
-        cmd.arg("--glossary").arg(g);
-    }
-    cmd.arg("--").arg(&opts.input);
+    // NOTE: As of README, CLI supports --input/--from/--to/--precision. style/glossary are ignored.
+    cmd.arg("--input").arg(&opts.input);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
