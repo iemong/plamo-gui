@@ -287,7 +287,15 @@ pub fn run() {
                             .unwrap_or(false);
                         s.last = Some(now);
                         if is_double {
-                            let _ = app.emit("double-copy", serde_json::json!({}));
+                            // クリップボードをRust側で読み取り（フォーカス不要）
+                            let text = arboard::Clipboard::new()
+                                .and_then(|mut cb| cb.get_text())
+                                .unwrap_or_default();
+                            let _ = app.emit("double-copy", serde_json::json!({ "text": text }));
+                            // 必要ならウィンドウにフォーカス
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.set_focus();
+                            }
                         }
                     },
                 )
@@ -308,7 +316,13 @@ pub fn run() {
                             .unwrap_or(false);
                         s.last = Some(now);
                         if is_double {
-                            let _ = app.emit("double-copy", serde_json::json!({}));
+                            let text = arboard::Clipboard::new()
+                                .and_then(|mut cb| cb.get_text())
+                                .unwrap_or_default();
+                            let _ = app.emit("double-copy", serde_json::json!({ "text": text }));
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.set_focus();
+                            }
                         }
                     },
                 )
@@ -319,3 +333,5 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+// Clipboard commands are omitted; frontend uses navigator.clipboard.

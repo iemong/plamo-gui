@@ -47,19 +47,13 @@ function App() {
 
   // Handle double-copy signal from backend
   useEffect(() => {
-    const un = listen("double-copy", async () => {
-      try {
-        const clip = await navigator.clipboard.readText();
-        if (clip && clip.trim().length > 0) {
-          setInput(clip);
-          if (settings?.double_copy.enabled !== false) {
-            // 右ペインで結果を表示するため、ミニウィンドウは自動では開かない
-            setMiniOpen(false);
-            translate(clip);
-          }
-        }
-      } catch {
-        // ignore
+    const un = listen<{ text?: string }>("double-copy", async (e) => {
+      const clip = (e.payload?.text ?? "").trim();
+      const text = clip.length > 0 ? clip : input;
+      if (text && settings?.double_copy.enabled !== false) {
+        setInput(text);
+        setMiniOpen(false);
+        translate(text);
       }
     });
     return () => {
