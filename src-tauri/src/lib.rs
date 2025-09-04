@@ -2,7 +2,12 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, process::Stdio, sync::Arc};
 use tauri::{Emitter, Manager};
-use tokio::{io::{AsyncBufReadExt, BufReader}, process::Command, sync::Mutex as AsyncMutex, time::Duration};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+    sync::Mutex as AsyncMutex,
+    time::Duration,
+};
 
 // ===== Settings/History datatypes (MVP minimal) =====
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,20 +21,34 @@ pub struct Settings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlamoCfg { pub precision: String, pub server: bool }
+pub struct PlamoCfg {
+    pub precision: String,
+    pub server: bool,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DoubleCopy { pub enabled: bool, pub paste_mode: String, pub auto_copy: bool }
+pub struct DoubleCopy {
+    pub enabled: bool,
+    pub paste_mode: String,
+    pub auto_copy: bool,
+}
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             engine: "plamo".into(),
-            plamo: PlamoCfg { precision: "4bit".into(), server: false },
+            plamo: PlamoCfg {
+                precision: "4bit".into(),
+                server: false,
+            },
             style_preset: "business".into(),
             glossary_path: None,
             timeout_ms: 60_000,
-            double_copy: DoubleCopy { enabled: true, paste_mode: "popup".into(), auto_copy: false },
+            double_copy: DoubleCopy {
+                enabled: true,
+                paste_mode: "popup".into(),
+                auto_copy: false,
+            },
         }
     }
 }
@@ -59,14 +78,26 @@ pub struct TranslateOptions {
 type TaskMap = Arc<AsyncMutex<HashMap<String, tokio::process::Child>>>;
 
 #[tauri::command]
-async fn translate_plamo(app: tauri::AppHandle, tasks: tauri::State<'_, TaskMap>, opts: TranslateOptions) -> Result<(), String> {
+async fn translate_plamo(
+    app: tauri::AppHandle,
+    tasks: tauri::State<'_, TaskMap>,
+    opts: TranslateOptions,
+) -> Result<(), String> {
     let mut cmd = Command::new("plamo-translate");
     // ざっくりとした引数。実際のCLI仕様に合わせて調整する前提。
-    if let Some(from) = &opts.from { cmd.arg("--from").arg(from); }
+    if let Some(from) = &opts.from {
+        cmd.arg("--from").arg(from);
+    }
     cmd.arg("--to").arg(&opts.to);
-    if let Some(p) = &opts.precision { cmd.arg("--precision").arg(p); }
-    if let Some(s) = &opts.style { cmd.arg("--style").arg(s); }
-    if let Some(g) = &opts.glossary { cmd.arg("--glossary").arg(g); }
+    if let Some(p) = &opts.precision {
+        cmd.arg("--precision").arg(p);
+    }
+    if let Some(s) = &opts.style {
+        cmd.arg("--style").arg(s);
+    }
+    if let Some(g) = &opts.glossary {
+        cmd.arg("--glossary").arg(g);
+    }
     cmd.arg("--").arg(&opts.input);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -83,16 +114,25 @@ async fn translate_plamo(app: tauri::AppHandle, tasks: tauri::State<'_, TaskMap>
                     let _ = app2.emit(&format!("translate://{}", id), format!("{} ", w));
                     tokio::time::sleep(Duration::from_millis(120)).await;
                     // simple progress event (optional): percentage
-                    let _ = app2.emit(&format!("translate-progress://{}", id), (i+1) as f32 / words.len().max(1) as f32);
+                    let _ = app2.emit(
+                        &format!("translate-progress://{}", id),
+                        (i + 1) as f32 / words.len().max(1) as f32,
+                    );
                 }
-                let _ = app2.emit(&format!("translate-done://{}", id), serde_json::json!({"ok": true}));
+                let _ = app2.emit(
+                    &format!("translate-done://{}", id),
+                    serde_json::json!({"ok": true}),
+                );
             });
             return Ok(());
         }
     };
 
     let id = opts.id.clone();
-    let stdout = child.stdout.take().ok_or_else(|| "failed to take stdout".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "failed to take stdout".to_string())?;
     {
         let mut map = tasks.lock().await;
         map.insert(id.clone(), child);
@@ -108,7 +148,10 @@ async fn translate_plamo(app: tauri::AppHandle, tasks: tauri::State<'_, TaskMap>
             let _ = app2.emit(&format!("translate://{}", id), line);
         }
         // 終了検知
-        let _ = app2.emit(&format!("translate-done://{}", id), serde_json::json!({"ok": true}));
+        let _ = app2.emit(
+            &format!("translate-done://{}", id),
+            serde_json::json!({"ok": true}),
+        );
         let mut map = tasks2.lock().await;
         map.remove(&id);
     });
@@ -122,7 +165,10 @@ async fn translate_plamo(app: tauri::AppHandle, tasks: tauri::State<'_, TaskMap>
         let mut map = tasks3.lock().await;
         if let Some(mut child) = map.remove(&id2) {
             let _ = child.kill().await;
-            let _ = app3.emit(&format!("translate-done://{}", id2), serde_json::json!({"ok": false, "reason": "timeout"}));
+            let _ = app3.emit(
+                &format!("translate-done://{}", id2),
+                serde_json::json!({"ok": false, "reason": "timeout"}),
+            );
         }
     });
     Ok(())
@@ -143,7 +189,9 @@ fn load_settings(app: tauri::AppHandle) -> Result<Settings, String> {
     let p = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
     let f = p.join("settings.json");
-    if !f.exists() { return Ok(Settings::default()); }
+    if !f.exists() {
+        return Ok(Settings::default());
+    }
     let s = std::fs::read_to_string(f).map_err(|e| e.to_string())?;
     serde_json::from_str(&s).map_err(|e| e.to_string())
 }
@@ -164,7 +212,10 @@ fn append_history(app: tauri::AppHandle, item: HistoryItem) -> Result<(), String
     std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
     let f = p.join("history.jsonl");
     let line = serde_json::to_string(&item).map_err(|e| e.to_string())? + "\n";
-    std::fs::OpenOptions::new().create(true).append(true).open(f)
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(f)
         .and_then(|mut fh| std::io::Write::write_all(&mut fh, line.as_bytes()))
         .map_err(|e| e.to_string())
 }
@@ -173,19 +224,27 @@ fn append_history(app: tauri::AppHandle, item: HistoryItem) -> Result<(), String
 fn load_history(app: tauri::AppHandle) -> Result<Vec<HistoryItem>, String> {
     let p = app.path().app_config_dir().map_err(|e| e.to_string())?;
     let f = p.join("history.jsonl");
-    if !f.exists() { return Ok(vec![]); }
+    if !f.exists() {
+        return Ok(vec![]);
+    }
     let s = std::fs::read_to_string(f).map_err(|e| e.to_string())?;
     let mut out = vec![];
     for line in s.lines() {
-        if line.trim().is_empty() { continue; }
-        if let Ok(v) = serde_json::from_str::<HistoryItem>(line) { out.push(v); }
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Ok(v) = serde_json::from_str::<HistoryItem>(line) {
+            out.push(v);
+        }
     }
     Ok(out)
 }
 
-use std::time::{Duration as StdDuration, Instant};
 use std::sync::Mutex as StdMutex;
-struct DoubleCopyState { last: Option<Instant> }
+use std::time::{Duration as StdDuration, Instant};
+struct DoubleCopyState {
+    last: Option<Instant>,
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -209,30 +268,48 @@ pub fn run() {
             // Register double-copy (CmdOrCtrl+C twice within 500ms)
             let app_handle = app.handle();
             let state = double_copy.clone();
-            use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, GlobalShortcutExt};
+            use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
             let gs = app_handle.global_shortcut();
             // macOS: Command+C
             {
                 let state = double_copy.clone();
-                gs.on_shortcut(Shortcut::new(Some(Modifiers::SUPER), Code::KeyC), move |app, _sc, _ev| {
-                    let mut s = state.lock().unwrap();
-                    let now = Instant::now();
-                    let is_double = s.last.map(|t| now.duration_since(t) < StdDuration::from_millis(500)).unwrap_or(false);
-                    s.last = Some(now);
-                    if is_double { let _ = app.emit("double-copy", serde_json::json!({})); }
-                }).map_err(|e| anyhow!(e.to_string()))?;
+                gs.on_shortcut(
+                    Shortcut::new(Some(Modifiers::SUPER), Code::KeyC),
+                    move |app, _sc, _ev| {
+                        let mut s = state.lock().unwrap();
+                        let now = Instant::now();
+                        let is_double = s
+                            .last
+                            .map(|t| now.duration_since(t) < StdDuration::from_millis(500))
+                            .unwrap_or(false);
+                        s.last = Some(now);
+                        if is_double {
+                            let _ = app.emit("double-copy", serde_json::json!({}));
+                        }
+                    },
+                )
+                .map_err(|e| anyhow!(e.to_string()))?;
             }
             // Windows/Linux: Ctrl+C
             #[cfg(any(windows, target_os = "linux"))]
             {
                 let state = double_copy.clone();
-                gs.on_shortcut(Shortcut::new(Some(Modifiers::CONTROL), Code::KeyC), move |app, _sc, _ev| {
-                    let mut s = state.lock().unwrap();
-                    let now = Instant::now();
-                    let is_double = s.last.map(|t| now.duration_since(t) < StdDuration::from_millis(500)).unwrap_or(false);
-                    s.last = Some(now);
-                    if is_double { let _ = app.emit("double-copy", serde_json::json!({})); }
-                }).map_err(|e| anyhow!(e.to_string()))?;
+                gs.on_shortcut(
+                    Shortcut::new(Some(Modifiers::CONTROL), Code::KeyC),
+                    move |app, _sc, _ev| {
+                        let mut s = state.lock().unwrap();
+                        let now = Instant::now();
+                        let is_double = s
+                            .last
+                            .map(|t| now.duration_since(t) < StdDuration::from_millis(500))
+                            .unwrap_or(false);
+                        s.last = Some(now);
+                        if is_double {
+                            let _ = app.emit("double-copy", serde_json::json!({}));
+                        }
+                    },
+                )
+                .map_err(|e| anyhow!(e.to_string()))?;
             }
             Ok(())
         })

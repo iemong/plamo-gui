@@ -5,10 +5,13 @@ pre-commit:
       run: bun run lint
     types:
       run: bun run check-types
+    rust:fmt:
+      run: cd src-tauri && cargo fmt --all -- --check
+    rust:check:
+      run: cd src-tauri && cargo check
 
 # pre-push でビルド確認をしたい場合はコメント解除
 # pre-push:
 #   commands:
 #     build:
 #       run: bun run build
-
