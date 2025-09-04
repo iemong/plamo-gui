@@ -273,11 +273,11 @@ pub fn run() {
             let state = double_copy.clone();
             use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
             let gs = app_handle.global_shortcut();
-            // macOS: Command+C
+            // macOS: Command+Shift+C（暫定: 通常のコピー操作を妨げないため）
             {
                 let state = double_copy.clone();
                 gs.on_shortcut(
-                    Shortcut::new(Some(Modifiers::SUPER), Code::KeyC),
+                    Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyC),
                     move |app, _sc, _ev| {
                         let mut s = state.lock().unwrap();
                         let now = Instant::now();
@@ -301,12 +301,12 @@ pub fn run() {
                 )
                 .map_err(|e| anyhow!(e.to_string()))?;
             }
-            // Windows/Linux: Ctrl+C
+            // Windows/Linux: Ctrl+Shift+C（暫定）
             #[cfg(any(windows, target_os = "linux"))]
             {
                 let state = double_copy.clone();
                 gs.on_shortcut(
-                    Shortcut::new(Some(Modifiers::CONTROL), Code::KeyC),
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyC),
                     move |app, _sc, _ev| {
                         let mut s = state.lock().unwrap();
                         let now = Instant::now();
