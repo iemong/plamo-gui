@@ -9,6 +9,7 @@ import { ShortcutHint } from "@/components/ShortcutHint";
 import { Toast } from "@/components/ui/toast";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import type { HistoryItem, Settings } from "@/types";
+import { Languages, ArrowLeftRight, Settings as SettingsIcon, Copy, FileText, FileDown, Loader2 } from "lucide-react";
 
 // 型は src/types.ts に移動
 
@@ -163,6 +164,23 @@ function App() {
     setProgress(null);
   };
 
+  // 入力・言語変更時のデバウンス自動翻訳（1秒）
+  useEffect(() => {
+    if (!input.trim()) return;
+    const t = setTimeout(async () => {
+      // 実行中ならキャンセルしてから再実行
+      if (status === "translating" && currentJob.current) {
+        await invoke("abort_translation", { id: currentJob.current }).catch(() => {});
+        listeners.current.forEach((f) => f());
+        listeners.current = [];
+        currentJob.current = null;
+      }
+      translate(input);
+    }, 1000);
+    return () => clearTimeout(t);
+    // from/to 変更時も反映
+  }, [input, from, to]);
+
   return (
     <main className="mx-auto min-h-screen max-w-[1200px] p-4 md:p-6">
       {/* Header */}
@@ -171,19 +189,38 @@ function App() {
         <div className="flex items-center gap-2">
           <ShortcutHint />
           <button
-            className="rounded-md border px-2 py-1 text-sm hover:bg-accent"
+            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm hover:bg-accent"
             onClick={() => setSettingsOpen(true)}
+            title="Settings"
           >
-            Settings
+            <SettingsIcon className="h-4 w-4" />
+            <span className="sr-only">Settings</span>
           </button>
         </div>
       </div>
 
       {tab === "translate" ? (
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+          {/* Row: From | Swap | To */}
+          <div className="md:col-span-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+            <LangSelector id="from" detectable value={from} onChange={setFrom} />
+            <button
+              className="mx-auto inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm hover:bg-accent"
+              onClick={() => {
+                const t = from;
+                setFrom(to);
+                setTo(t);
+              }}
+              title="Swap languages"
+              aria-label="Swap languages"
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+            </button>
+            <LangSelector id="to" value={to} onChange={setTo} />
+          </div>
+
           {/* Left: Input */}
           <div className="flex flex-col gap-2">
-            <LangSelector id="from" detectable value={from} onChange={setFrom} />
             <Textarea
               id="input"
               placeholder="Type or paste text to translate"
@@ -192,11 +229,19 @@ function App() {
             />
             <div className="flex items-center gap-2">
               <button
-                className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
                 disabled={!input || status === "translating"}
                 onClick={() => translate(input)}
               >
-                {status === "translating" ? "Translating…" : "Translate"}
+                {status === "translating" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Translating…
+                  </>
+                ) : (
+                  <>
+                    <Languages className="h-4 w-4" /> Translate
+                  </>
+                )}
               </button>
               {status === "translating" && (
                 <button
@@ -206,34 +251,22 @@ function App() {
                   Cancel
                 </button>
               )}
-              <button
-                className="inline-flex h-10 items-center justify-center rounded-md border px-3 text-sm hover:bg-accent"
-                onClick={() => {
-                  const t = from;
-                  setFrom(to);
-                  setTo(t);
-                }}
-                title="Swap languages"
-              >
-                ↔︎ Swap
-              </button>
             </div>
           </div>
 
           {/* Right: Output */}
           <div className="flex flex-col gap-2">
-            <LangSelector id="to" value={to} onChange={setTo} />
             <Textarea id="output" readOnly aria-live="polite" value={output} />
             <div className="flex items-center gap-2">
               <button
-                className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                className="inline-flex items-center gap-1 rounded-md border px-3 py-1 text-sm hover:bg-accent"
                 onClick={async () => output && (await navigator.clipboard.writeText(output))}
                 disabled={!output}
               >
-                Copy
+                <Copy className="h-4 w-4" /> Copy
               </button>
               <button
-                className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                className="inline-flex items-center gap-1 rounded-md border px-3 py-1 text-sm hover:bg-accent"
                 onClick={() => {
                   if (!output) return;
                   const blob = new Blob([output], { type: "text/plain;charset=utf-8" });
@@ -246,10 +279,10 @@ function App() {
                 }}
                 disabled={!output}
               >
-                Save .txt
+                <FileText className="h-4 w-4" /> Save .txt
               </button>
               <button
-                className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                className="inline-flex items-center gap-1 rounded-md border px-3 py-1 text-sm hover:bg-accent"
                 onClick={() => {
                   if (!output) return;
                   const md = `# Translation\n\n${output}`;
@@ -263,7 +296,7 @@ function App() {
                 }}
                 disabled={!output}
               >
-                Save .md
+                <FileDown className="h-4 w-4" /> Save .md
               </button>
             </div>
             <Progress value={progress} />
