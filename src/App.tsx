@@ -52,7 +52,8 @@ function App() {
         if (clip && clip.trim().length > 0) {
           setInput(clip);
           if (settings?.double_copy.enabled !== false) {
-            if (settings?.double_copy.paste_mode === "popup") setMiniOpen(true);
+            // 右ペインで結果を表示するため、ミニウィンドウは自動では開かない
+            setMiniOpen(false);
             translate(clip);
           }
         }
@@ -83,13 +84,17 @@ function App() {
     const id = crypto.randomUUID();
     currentJob.current = id;
     // subscribe to events
-    const u1 = await listen<string>(`translate://${id}`, (e) => {
+    const u1 = await listen<string>(`translate:${id}:chunk`, (e) => {
       setOutput((prev) => prev + e.payload);
     });
-    const u2 = await listen<number>(`translate-progress://${id}`, (e) => {
+    const u2 = await listen<number>(`translate:${id}:progress`, (e) => {
       setProgress(Number(e.payload));
     });
-    const u3 = await listen(`translate-done://${id}`, async () => {
+    const uFinal = await listen<string>(`translate:${id}:final`, (e) => {
+      // 安全策: 一切チャンクが来なかった場合の最終出力
+      if (!output) setOutput(e.payload);
+    });
+    const u3 = await listen(`translate:${id}:done`, async () => {
       setStatus("done");
       setProgress(1);
       listeners.current.forEach((f) => f());
@@ -114,13 +119,10 @@ function App() {
           // ignore
         }
       }
-      if (settings?.double_copy.paste_mode === "popup") {
-        setMiniOpen(true);
-      } else {
-        setMiniOpen(false);
-      }
+      // 右ペイン表示を優先し、完了時もミニウィンドウは開かない
+      setMiniOpen(false);
     });
-    listeners.current = [u1, u2, u3];
+    listeners.current = [u1, u2, uFinal, u3];
     await invoke("translate_plamo", {
       opts: {
         id,

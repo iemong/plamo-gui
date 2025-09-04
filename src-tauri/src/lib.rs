@@ -110,17 +110,21 @@ async fn translate_plamo(
             let app2 = app.clone();
             tokio::spawn(async move {
                 let words: Vec<&str> = opts.input.split_whitespace().collect();
+                let mut buf = String::new();
                 for (i, w) in words.iter().enumerate() {
-                    let _ = app2.emit(&format!("translate://{}", id), format!("{} ", w));
+                    let piece = format!("{} ", w);
+                    buf.push_str(&piece);
+                    let _ = app2.emit(&format!("translate:{}:chunk", id), piece);
                     tokio::time::sleep(Duration::from_millis(120)).await;
                     // simple progress event (optional): percentage
                     let _ = app2.emit(
-                        &format!("translate-progress://{}", id),
+                        &format!("translate:{}:progress", id),
                         (i + 1) as f32 / words.len().max(1) as f32,
                     );
                 }
+                let _ = app2.emit(&format!("translate:{}:final", id), buf);
                 let _ = app2.emit(
-                    &format!("translate-done://{}", id),
+                    &format!("translate:{}:done", id),
                     serde_json::json!({"ok": true}),
                 );
             });
@@ -144,12 +148,16 @@ async fn translate_plamo(
     tokio::spawn(async move {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
+        let mut final_buf = String::new();
         while let Ok(Some(line)) = lines.next_line().await {
-            let _ = app2.emit(&format!("translate://{}", id), line);
+            final_buf.push_str(&line);
+            final_buf.push('\n');
+            let _ = app2.emit(&format!("translate:{}:chunk", id), line);
         }
-        // 終了検知
+        // 終了検知（最終文字列も送る）
+        let _ = app2.emit(&format!("translate:{}:final", id), final_buf);
         let _ = app2.emit(
-            &format!("translate-done://{}", id),
+            &format!("translate:{}:done", id),
             serde_json::json!({"ok": true}),
         );
         let mut map = tasks2.lock().await;
@@ -166,7 +174,7 @@ async fn translate_plamo(
         if let Some(mut child) = map.remove(&id2) {
             let _ = child.kill().await;
             let _ = app3.emit(
-                &format!("translate-done://{}", id2),
+                &format!("translate:{}:done", id2),
                 serde_json::json!({"ok": false, "reason": "timeout"}),
             );
         }
