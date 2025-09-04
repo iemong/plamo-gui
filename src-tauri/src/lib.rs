@@ -112,6 +112,19 @@ async fn translate_plamo(app: tauri::AppHandle, tasks: tauri::State<'_, TaskMap>
         let mut map = tasks2.lock().await;
         map.remove(&id);
     });
+
+    // タイムアウト・ウォッチャ（60s）
+    let app3 = app.clone();
+    let tasks3 = tasks.clone();
+    let id2 = opts.id.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(60_000)).await;
+        let mut map = tasks3.lock().await;
+        if let Some(mut child) = map.remove(&id2) {
+            let _ = child.kill().await;
+            let _ = app3.emit(&format!("translate-done://{}", id2), serde_json::json!({"ok": false, "reason": "timeout"}));
+        }
+    });
     Ok(())
 }
 
