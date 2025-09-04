@@ -1,24 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { HeaderTabs } from "@/components/HeaderTabs";
+import { LangSelector } from "@/components/LangSelector";
+import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
+import { ShortcutHint } from "@/components/ShortcutHint";
+import { Toast } from "@/components/ui/toast";
+import { SettingsDialog } from "@/components/SettingsDialog";
+import type { HistoryItem, Settings } from "@/types";
 
-type HistoryItem = {
-  id: string;
-  input: string;
-  output: string;
-  from?: string;
-  to: string;
-  created_at: number;
-};
-
-type Settings = {
-  engine: string;
-  plamo: { precision: "4bit" | "8bit" | "bf16"; server: boolean };
-  style_preset: "business" | "tech" | "casual";
-  glossary_path?: string;
-  timeout_ms: number;
-  double_copy: { enabled: boolean; paste_mode: "popup" | "clipboard"; auto_copy: boolean };
-};
+// 型は src/types.ts に移動
 
 function App() {
   const [tab, setTab] = useState<"translate" | "history">("translate");
@@ -158,28 +150,9 @@ function App() {
     <main className="mx-auto min-h-screen max-w-[1200px] p-4 md:p-6">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
-        <div className="inline-flex rounded-lg border p-1">
-          <button
-            className={
-              "px-3 py-1 text-sm " +
-              (tab === "translate" ? "rounded-md bg-accent" : "text-muted-foreground")
-            }
-            onClick={() => setTab("translate")}
-          >
-            Translate text
-          </button>
-          <button
-            className={
-              "px-3 py-1 text-sm " +
-              (tab === "history" ? "rounded-md bg-accent" : "text-muted-foreground")
-            }
-            onClick={() => setTab("history")}
-          >
-            History
-          </button>
-        </div>
+        <HeaderTabs tab={tab} onChange={setTab} />
         <div className="flex items-center gap-2">
-          <div className="text-sm text-muted-foreground">⌘C×2 でクイック翻訳</div>
+          <ShortcutHint />
           <button
             className="rounded-md border px-2 py-1 text-sm hover:bg-accent"
             onClick={() => setSettingsOpen(true)}
@@ -193,22 +166,9 @@ function App() {
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
           {/* Left: Input */}
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm text-muted-foreground">From</label>
-              <select
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              >
-                <option value="auto">Auto</option>
-                <option value="en">English</option>
-                <option value="ja">Japanese</option>
-                <option value="zh">Chinese</option>
-              </select>
-            </div>
-            <textarea
+            <LangSelector id="from" detectable value={from} onChange={setFrom} />
+            <Textarea
               id="input"
-              className="min-h-[48vh] md:min-h-[64vh] rounded-2xl border bg-background p-4 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               placeholder="Type or paste text to translate"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -245,25 +205,8 @@ function App() {
 
           {/* Right: Output */}
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm text-muted-foreground">To</label>
-              <select
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              >
-                <option value="ja">Japanese</option>
-                <option value="en">English</option>
-                <option value="zh">Chinese</option>
-              </select>
-            </div>
-            <textarea
-              id="output"
-              readOnly
-              aria-live="polite"
-              className="min-h-[48vh] md:min-h-[64vh] rounded-2xl border bg-background p-4 shadow-sm"
-              value={output}
-            />
+            <LangSelector id="to" value={to} onChange={setTo} />
+            <Textarea id="output" readOnly aria-live="polite" value={output} />
             <div className="flex items-center gap-2">
               <button
                 className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
@@ -306,12 +249,7 @@ function App() {
                 Save .md
               </button>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: progress ? `${Math.floor(progress * 100)}%` : undefined }}
-              />
-            </div>
+            <Progress value={progress} />
             <div className="text-right text-xs text-muted-foreground">
               {status === "translating" ? "Translating…" : status === "done" ? "Done" : "Ready"}
             </div>
@@ -363,116 +301,26 @@ function App() {
 
       {/* Settings Dialog */}
       {settingsOpen && settings && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={() => setSettingsOpen(false)}>
-          <div className="w-full max-w-lg rounded-2xl border bg-card p-4 shadow" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 text-lg font-medium">Settings</h3>
-            <div className="grid gap-3">
-              <label className="grid gap-1 text-sm">
-                <span className="text-muted-foreground">Style preset</span>
-                <select
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                  value={settings.style_preset}
-                  onChange={(e) => setSettings({ ...settings, style_preset: e.target.value as Settings["style_preset"] })}
-                >
-                  <option value="business">business</option>
-                  <option value="tech">tech</option>
-                  <option value="casual">casual</option>
-                </select>
-              </label>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="grid gap-1 text-sm">
-                  <span className="text-muted-foreground">Precision</span>
-                  <select
-                    className="h-9 rounded-md border bg-background px-2 text-sm"
-                    value={settings.plamo.precision}
-                    onChange={(e) => setSettings({ ...settings, plamo: { ...settings.plamo, precision: e.target.value as any } })}
-                  >
-                    <option value="4bit">4bit</option>
-                    <option value="8bit">8bit</option>
-                    <option value="bf16">bf16</option>
-                  </select>
-                </label>
-                <label className="grid gap-1 text-sm">
-                  <span className="text-muted-foreground">Timeout (ms)</span>
-                  <input
-                    type="number"
-                    className="h-9 rounded-md border bg-background px-2 text-sm"
-                    value={settings.timeout_ms}
-                    onChange={(e) => setSettings({ ...settings, timeout_ms: Number(e.target.value) })}
-                  />
-                </label>
-              </div>
-
-              <label className="grid gap-1 text-sm">
-                <span className="text-muted-foreground">Glossary path</span>
-                <input
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                  placeholder="/path/to/glossary.json"
-                  value={settings.glossary_path ?? ""}
-                  onChange={(e) => setSettings({ ...settings, glossary_path: e.target.value })}
-                />
-              </label>
-
-              <div className="grid gap-2 rounded-lg border p-3">
-                <div className="text-sm font-medium">Double Copy</div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={settings.double_copy.enabled}
-                    onChange={(e) => setSettings({ ...settings, double_copy: { ...settings.double_copy, enabled: e.target.checked } })}
-                  />
-                  <span>Enable</span>
-                </label>
-                <div className="flex items-center gap-3 text-sm">
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="radio"
-                      name="paste-mode"
-                      checked={settings.double_copy.paste_mode === "popup"}
-                      onChange={() => setSettings({ ...settings, double_copy: { ...settings.double_copy, paste_mode: "popup" } })}
-                    />
-                    popup
-                  </label>
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="radio"
-                      name="paste-mode"
-                      checked={settings.double_copy.paste_mode === "clipboard"}
-                      onChange={() => setSettings({ ...settings, double_copy: { ...settings.double_copy, paste_mode: "clipboard" } })}
-                    />
-                    clipboard
-                  </label>
-                </div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={settings.double_copy.auto_copy}
-                    onChange={(e) => setSettings({ ...settings, double_copy: { ...settings.double_copy, auto_copy: e.target.checked } })}
-                  />
-                  <span>Auto copy result</span>
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button className="rounded-md border px-3 py-1 text-sm hover:bg-accent" onClick={() => setSettingsOpen(false)}>
-                  Cancel
-                </button>
-                <button
-                  className="rounded-md bg-primary px-4 py-1 text-sm text-primary-foreground hover:bg-primary/90"
-                  onClick={async () => {
-                    if (!settings) return;
-                    await invoke("save_settings", { s: settings }).catch(() => {});
-                    setSettingsOpen(false);
-                  }}
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <SettingsDialog
+          open={settingsOpen}
+          settings={settings}
+          onChange={setSettings}
+          onClose={() => setSettingsOpen(false)}
+          onSave={async () => {
+            if (!settings) return;
+            await invoke("save_settings", { s: settings }).catch(() => {});
+            setSettingsOpen(false);
+          }}
+        />
       )}
+
+      <Toast
+        open={status === "error"}
+        title="Error"
+        description="Translation failed. Check CLI or settings."
+        variant="destructive"
+        onOpenChange={(v) => v || setStatus("ready")}
+      />
     </main>
   );
 }
