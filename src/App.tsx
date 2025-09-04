@@ -181,7 +181,36 @@ function App() {
       <div className="mb-4 flex items-center justify-between">
         <HeaderTabs tab={tab} onChange={setTab} />
         <div className="flex items-center gap-2">
-          <ShortcutHint />
+          <ShortcutHint label={(function () {
+            const sc = settings?.double_copy?.shortcut ?? "cmd-shift-c";
+            const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
+            const labelFor = (key: string) => {
+              if (isMac) {
+                switch (key) {
+                  case "cmd-shift-c":
+                    return "⌘⇧C でクイック翻訳";
+                  case "cmd-alt-c":
+                    return "⌘⌥C でクイック翻訳";
+                  case "cmd-k":
+                    return "⌘K でクイック翻訳";
+                  default:
+                    return "⌘⇧C でクイック翻訳";
+                }
+              } else {
+                switch (key) {
+                  case "cmd-shift-c":
+                    return "Ctrl+Shift+C to Quick Translate";
+                  case "cmd-alt-c":
+                    return "Ctrl+Alt+C to Quick Translate";
+                  case "cmd-k":
+                    return "Ctrl+K to Quick Translate";
+                  default:
+                    return "Ctrl+Shift+C to Quick Translate";
+                }
+              }
+            };
+            return labelFor(sc);
+          })()} />
           <button
             className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm hover:bg-accent"
             onClick={() => setSettingsOpen(true)}
