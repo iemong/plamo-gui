@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, process::Stdio, sync::{Arc, Mutex}};
+use std::{collections::HashMap, process::Stdio, sync::Arc};
 use tauri::{Emitter, Manager};
-use tokio::{io::{AsyncBufReadExt, BufReader}, process::Command, sync::Mutex as AsyncMutex, time::{timeout, Duration}};
+use tokio::{io::{AsyncBufReadExt, BufReader}, process::Command, sync::Mutex as AsyncMutex, time::Duration};
 
 // ===== Settings/History datatypes (MVP minimal) =====
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,9 +71,9 @@ async fn translate_plamo(app: tauri::AppHandle, tasks: tauri::State<'_, TaskMap>
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
-    let child = match cmd.spawn() {
+    let mut child = match cmd.spawn() {
         Ok(c) => c,
-        Err(e) => {
+        Err(_e) => {
             // Fallback: CLI が無い場合は擬似ストリーミング
             let id = opts.id.clone();
             let app2 = app.clone();
@@ -83,7 +83,7 @@ async fn translate_plamo(app: tauri::AppHandle, tasks: tauri::State<'_, TaskMap>
                     let _ = app2.emit(&format!("translate://{}", id), format!("{} ", w));
                     tokio::time::sleep(Duration::from_millis(120)).await;
                     // simple progress event (optional): percentage
-                    let _ = app2.emit(&format!("translate-progress://{}", id), ((i+1) as f32 / words.len().max(1) as f32));
+                    let _ = app2.emit(&format!("translate-progress://{}", id), (i+1) as f32 / words.len().max(1) as f32);
                 }
                 let _ = app2.emit(&format!("translate-done://{}", id), serde_json::json!({"ok": true}));
             });
@@ -92,7 +92,7 @@ async fn translate_plamo(app: tauri::AppHandle, tasks: tauri::State<'_, TaskMap>
     };
 
     let id = opts.id.clone();
-    let stdout = child.stdout.as_ref().unwrap().try_clone().map_err(|e| e.to_string())?;
+    let stdout = child.stdout.take().ok_or_else(|| "failed to take stdout".to_string())?;
     {
         let mut map = tasks.lock().await;
         map.insert(id.clone(), child);
@@ -100,7 +100,7 @@ async fn translate_plamo(app: tauri::AppHandle, tasks: tauri::State<'_, TaskMap>
 
     // 読み取りタスク
     let app2 = app.clone();
-    let tasks2 = tasks.clone();
+    let tasks2 = tasks.inner().clone();
     tokio::spawn(async move {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
@@ -115,7 +115,7 @@ async fn translate_plamo(app: tauri::AppHandle, tasks: tauri::State<'_, TaskMap>
 
     // タイムアウト・ウォッチャ（60s）
     let app3 = app.clone();
-    let tasks3 = tasks.clone();
+    let tasks3 = tasks.inner().clone();
     let id2 = opts.id.clone();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(60_000)).await;
@@ -209,19 +209,31 @@ pub fn run() {
             // Register double-copy (CmdOrCtrl+C twice within 500ms)
             let app_handle = app.handle();
             let state = double_copy.clone();
-            let gs = app_handle.plugin::<tauri_plugin_global_shortcut::GlobalShortcutManager>().unwrap();
-            use tauri_plugin_global_shortcut::Shortcut;
-            gs.register(Shortcut::new(None, "C").unwrap(), move || {
-                let mut s = state.lock().unwrap();
-                let now = Instant::now();
-                let is_double = s.last.map(|t| now.duration_since(t) < StdDuration::from_millis(500)).unwrap_or(false);
-                s.last = Some(now);
-                if is_double {
-                    let app2 = app_handle.clone();
-                    // emit to frontend to handle double-copy event
-                    let _ = app2.emit("double-copy", serde_json::json!({}));
-                }
-            }).map_err(|e| anyhow!(e.to_string()))?;
+            use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, GlobalShortcutExt};
+            let gs = app_handle.global_shortcut();
+            // macOS: Command+C
+            {
+                let state = double_copy.clone();
+                gs.on_shortcut(Shortcut::new(Some(Modifiers::SUPER), Code::KeyC), move |app, _sc, _ev| {
+                    let mut s = state.lock().unwrap();
+                    let now = Instant::now();
+                    let is_double = s.last.map(|t| now.duration_since(t) < StdDuration::from_millis(500)).unwrap_or(false);
+                    s.last = Some(now);
+                    if is_double { let _ = app.emit("double-copy", serde_json::json!({})); }
+                }).map_err(|e| anyhow!(e.to_string()))?;
+            }
+            // Windows/Linux: Ctrl+C
+            #[cfg(any(windows, target_os = "linux"))]
+            {
+                let state = double_copy.clone();
+                gs.on_shortcut(Shortcut::new(Some(Modifiers::CONTROL), Code::KeyC), move |app, _sc, _ev| {
+                    let mut s = state.lock().unwrap();
+                    let now = Instant::now();
+                    let is_double = s.last.map(|t| now.duration_since(t) < StdDuration::from_millis(500)).unwrap_or(false);
+                    s.last = Some(now);
+                    if is_double { let _ = app.emit("double-copy", serde_json::json!({})); }
+                }).map_err(|e| anyhow!(e.to_string()))?;
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
