@@ -73,6 +73,16 @@ function App() {
     };
   }, []);
 
+  // ESC でミニウィンドウを閉じる
+  useEffect(() => {
+    if (!miniOpen) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setMiniOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [miniOpen]);
+
   const translate = async (text: string) => {
     if (status === "translating") return;
     setOutput("");
