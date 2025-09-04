@@ -345,14 +345,17 @@ function App() {
 
       {/* Settings Dialog */}
       {settingsOpen && settings && (
-        <SettingsDialog
-          open={settingsOpen}
-          settings={settings}
-          onChange={setSettings}
-          onClose={() => setSettingsOpen(false)}
-          onSave={async () => {
-            if (!settings) return;
+          <SettingsDialog
+            open={settingsOpen}
+            settings={settings}
+            onChange={setSettings}
+            onClose={() => setSettingsOpen(false)}
+            onSave={async () => {
+              if (!settings) return;
             await invoke("save_settings", { s: settings }).catch(() => {});
+            if (settings.double_copy?.shortcut) {
+              await invoke("update_shortcut", { shortcut: settings.double_copy.shortcut }).catch(() => {});
+            }
             setSettingsOpen(false);
           }}
         />

@@ -31,6 +31,8 @@ pub struct DoubleCopy {
     pub enabled: bool,
     pub paste_mode: String,
     pub auto_copy: bool,
+    #[serde(default)]
+    pub shortcut: Option<String>,
 }
 
 impl Default for Settings {
@@ -48,6 +50,7 @@ impl Default for Settings {
                 enabled: true,
                 paste_mode: "popup".into(),
                 auto_copy: false,
+                shortcut: Some("cmd-shift-c".into()),
             },
         }
     }
@@ -249,89 +252,146 @@ struct DoubleCopyState {
     last: Option<Instant>,
 }
 
+#[derive(Clone)]
+struct DoubleCopyShared(Arc<StdMutex<DoubleCopyState>>);
+
+fn read_settings_from_disk(app: &tauri::AppHandle) -> Settings {
+    let p = match app.path().app_config_dir() {
+        Ok(p) => p,
+        Err(_) => return Settings::default(),
+    };
+    let f = p.join("settings.json");
+    if let Ok(s) = std::fs::read_to_string(f) {
+        if let Ok(mut cfg) = serde_json::from_str::<Settings>(&s) {
+            if cfg.double_copy.shortcut.is_none() {
+                cfg.double_copy.shortcut = Some("cmd-shift-c".into());
+            }
+            return cfg;
+        }
+    }
+    Settings::default()
+}
+
+fn register_quick_shortcut<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: Arc<StdMutex<DoubleCopyState>>,
+    shortcut: &str,
+) -> anyhow::Result<()> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let gs = app.global_shortcut();
+    // clear existing
+    let _ = gs.unregister_all();
+
+    use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
+    let (mods, code) = match shortcut {
+        "cmd-shift-c" => {
+            #[cfg(target_os = "macos")]
+            {
+                (Modifiers::SUPER | Modifiers::SHIFT, Code::KeyC)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                (Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyC)
+            }
+        }
+        "cmd-alt-c" => {
+            #[cfg(target_os = "macos")]
+            {
+                (Modifiers::SUPER | Modifiers::ALT, Code::KeyC)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                (Modifiers::CONTROL | Modifiers::ALT, Code::KeyC)
+            }
+        }
+        "cmd-k" => {
+            #[cfg(target_os = "macos")]
+            {
+                (Modifiers::SUPER, Code::KeyK)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                (Modifiers::CONTROL, Code::KeyK)
+            }
+        }
+        _ => {
+            #[cfg(target_os = "macos")]
+            {
+                (Modifiers::SUPER | Modifiers::SHIFT, Code::KeyC)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                (Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyC)
+            }
+        }
+    };
+    let st = state.clone();
+    gs.on_shortcut(Shortcut::new(Some(mods), code), move |app, _sc, _ev| {
+        let mut s = st.lock().unwrap();
+        let now = Instant::now();
+        let is_double = s
+            .last
+            .map(|t| now.duration_since(t) < StdDuration::from_millis(500))
+            .unwrap_or(false);
+        s.last = Some(now);
+        // 今は単押しで即発火（ダブル検出ロジックは将来的に活用）
+        if true || is_double {
+            let text = arboard::Clipboard::new()
+                .and_then(|mut cb| cb.get_text())
+                .unwrap_or_default();
+            let _ = app.emit("double-copy", serde_json::json!({ "text": text }));
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_focus();
+            }
+        }
+    })?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let tasks: TaskMap = Arc::new(AsyncMutex::new(HashMap::new()));
     let double_copy = Arc::new(StdMutex::new(DoubleCopyState { last: None }));
+    let shared = DoubleCopyShared(double_copy.clone());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard::init())
         .manage(tasks)
+        .manage(shared.clone())
         .invoke_handler(tauri::generate_handler![
             translate_plamo,
             abort_translation,
             load_settings,
             save_settings,
             append_history,
-            load_history
+            load_history,
+            update_shortcut
         ])
         .setup(move |app| {
-            // Register double-copy (CmdOrCtrl+C twice within 500ms)
+            // Register quick shortcut from saved settings
             let app_handle = app.handle();
-            let state = double_copy.clone();
-            use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
-            let gs = app_handle.global_shortcut();
-            // macOS: Command+Shift+C（暫定: 通常のコピー操作を妨げないため）
-            {
-                let state = double_copy.clone();
-                gs.on_shortcut(
-                    Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyC),
-                    move |app, _sc, _ev| {
-                        let mut s = state.lock().unwrap();
-                        let now = Instant::now();
-                        let is_double = s
-                            .last
-                            .map(|t| now.duration_since(t) < StdDuration::from_millis(500))
-                            .unwrap_or(false);
-                        s.last = Some(now);
-                        if is_double {
-                            // クリップボードをRust側で読み取り（フォーカス不要）
-                            let text = arboard::Clipboard::new()
-                                .and_then(|mut cb| cb.get_text())
-                                .unwrap_or_default();
-                            let _ = app.emit("double-copy", serde_json::json!({ "text": text }));
-                            // 必要ならウィンドウにフォーカス
-                            if let Some(w) = app.get_webview_window("main") {
-                                let _ = w.set_focus();
-                            }
-                        }
-                    },
-                )
+            let cfg = read_settings_from_disk(&app_handle);
+            let key = cfg
+                .double_copy
+                .shortcut
+                .unwrap_or_else(|| "cmd-shift-c".into());
+            register_quick_shortcut(&app_handle, double_copy.clone(), &key)
                 .map_err(|e| anyhow!(e.to_string()))?;
-            }
-            // Windows/Linux: Ctrl+Shift+C（暫定）
-            #[cfg(any(windows, target_os = "linux"))]
-            {
-                let state = double_copy.clone();
-                gs.on_shortcut(
-                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyC),
-                    move |app, _sc, _ev| {
-                        let mut s = state.lock().unwrap();
-                        let now = Instant::now();
-                        let is_double = s
-                            .last
-                            .map(|t| now.duration_since(t) < StdDuration::from_millis(500))
-                            .unwrap_or(false);
-                        s.last = Some(now);
-                        if is_double {
-                            let text = arboard::Clipboard::new()
-                                .and_then(|mut cb| cb.get_text())
-                                .unwrap_or_default();
-                            let _ = app.emit("double-copy", serde_json::json!({ "text": text }));
-                            if let Some(w) = app.get_webview_window("main") {
-                                let _ = w.set_focus();
-                            }
-                        }
-                    },
-                )
-                .map_err(|e| anyhow!(e.to_string()))?;
-            }
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn update_shortcut(
+    app: tauri::AppHandle,
+    shared: tauri::State<'_, DoubleCopyShared>,
+    shortcut: String,
+) -> Result<(), String> {
+    register_quick_shortcut(&app, shared.0.clone(), &shortcut).map_err(|e| e.to_string())
 }
 
 // Clipboard commands are omitted; frontend uses navigator.clipboard.

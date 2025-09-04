@@ -13,6 +13,5 @@ export type Settings = {
   style_preset: "business" | "tech" | "casual";
   glossary_path?: string;
   timeout_ms: number;
-  double_copy: { enabled: boolean; paste_mode: "popup" | "clipboard"; auto_copy: boolean };
+  double_copy: { enabled: boolean; paste_mode: "popup" | "clipboard"; auto_copy: boolean; shortcut?: string };
 };
-

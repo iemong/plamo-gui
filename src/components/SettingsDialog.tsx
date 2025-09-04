@@ -72,6 +72,26 @@ export function SettingsDialog({ open, settings, onChange, onClose, onSave }: Pr
               />
               <span>Enable</span>
             </label>
+            <div className="grid gap-1 text-sm">
+              <span className="text-muted-foreground">Quick translation shortcut</span>
+              <div className="flex flex-wrap gap-3">
+                {[
+                  { key: "cmd-shift-c", label: "Cmd+Shift+C (Ctrl+Shift+C)" },
+                  { key: "cmd-alt-c", label: "Cmd+Alt+C (Ctrl+Alt+C)" },
+                  { key: "cmd-k", label: "Cmd+K (Ctrl+K)" },
+                ].map((opt) => (
+                  <label key={opt.key} className="flex items-center gap-1">
+                    <input
+                      type="radio"
+                      name="dc-shortcut"
+                      checked={(settings.double_copy.shortcut ?? "cmd-shift-c") === opt.key}
+                      onChange={() => onChange({ ...settings, double_copy: { ...settings.double_copy, shortcut: opt.key } })}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
             <div className="flex items-center gap-3 text-sm">
               <label className="flex items-center gap-1">
                 <input
@@ -115,4 +135,3 @@ export function SettingsDialog({ open, settings, onChange, onClose, onSave }: Pr
     </div>
   );
 }
-
