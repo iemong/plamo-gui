@@ -1,3 +1,4 @@
+import React from "react";
 import { Settings } from "@/types";
 
 type Props = {
@@ -10,6 +11,37 @@ type Props = {
 
 export function SettingsDialog({ open, settings, onChange, onClose, onSave }: Props) {
   if (!open) return null;
+  const [recording, setRecording] = React.useState(false);
+  const [, setRecorded] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Build spec string for plugin: Super/Control/Alt/Shift + Key
+      const mods: string[] = [];
+      // platform info is not used in spec; keep for future enhancements
+      if (e.ctrlKey) mods.push("Control");
+      if (e.altKey) mods.push("Alt");
+      if (e.shiftKey) mods.push("Shift");
+      if (e.metaKey) mods.push("Super");
+      // Ignore pure modifier presses
+      const k = e.key;
+      if (["Shift", "Control", "Alt", "Meta"].includes(k)) return;
+      // Normalize key
+      let key = k.length === 1 ? k.toUpperCase() : k;
+      // Special-case common names
+      if (key === "Escape") key = "Esc";
+      if (key.startsWith("Arrow")) key = key.replace("Arrow", "");
+      const spec = [...mods, key].join("+");
+      setRecorded(spec);
+      setRecording(false);
+      onChange({ ...settings, double_copy: { ...settings.double_copy, shortcut: spec } });
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
+  }, [recording]);
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-lg rounded-2xl border bg-card p-4 shadow" onClick={(e) => e.stopPropagation()}>
@@ -73,24 +105,23 @@ export function SettingsDialog({ open, settings, onChange, onClose, onSave }: Pr
               <span>Enable</span>
             </label>
             <div className="grid gap-1 text-sm">
-              <span className="text-muted-foreground">Quick translation shortcut</span>
-              <div className="flex flex-wrap gap-3">
-                {[
-                  { key: "cmd-shift-c", label: "Cmd+Shift+C (Ctrl+Shift+C)" },
-                  { key: "cmd-alt-c", label: "Cmd+Alt+C (Ctrl+Alt+C)" },
-                  { key: "cmd-k", label: "Cmd+K (Ctrl+K)" },
-                ].map((opt) => (
-                  <label key={opt.key} className="flex items-center gap-1">
-                    <input
-                      type="radio"
-                      name="dc-shortcut"
-                      checked={(settings.double_copy.shortcut ?? "cmd-shift-c") === opt.key}
-                      onChange={() => onChange({ ...settings, double_copy: { ...settings.double_copy, shortcut: opt.key } })}
-                    />
-                    {opt.label}
-                  </label>
-                ))}
+              <span className="text-muted-foreground">Keyboard Shortcut</span>
+              <div className="flex items-center justify-between gap-2 rounded-md border bg-background px-3 py-2">
+                <div className="text-xs text-muted-foreground">
+                  {settings.double_copy.shortcut ?? "Not set"}
+                </div>
+                <button
+                  type="button"
+                  className="rounded-md border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+                  onClick={() => {
+                    setRecorded(null);
+                    setRecording(true);
+                  }}
+                >
+                  {recording ? "Press keys..." : "Record Shortcut"}
+                </button>
               </div>
+              <div className="text-xs text-muted-foreground">例: Super+Shift+C（macOSの⌘はSuper） / Control+Shift+C</div>
             </div>
             <div className="flex items-center gap-3 text-sm">
               <label className="flex items-center gap-1">

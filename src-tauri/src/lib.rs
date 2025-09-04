@@ -282,6 +282,28 @@ fn register_quick_shortcut<R: tauri::Runtime>(
     // clear existing
     let _ = gs.unregister_all();
 
+    // If a raw spec like "Super+Shift+C" / "Control+Alt+K" is provided, use it directly
+    if shortcut.contains('+') {
+        let st = state.clone();
+        gs.on_shortcut(shortcut, move |app, _sc, _ev| {
+            let mut s = st.lock().unwrap();
+            let now = Instant::now();
+            let _is_double = s
+                .last
+                .map(|t| now.duration_since(t) < StdDuration::from_millis(500))
+                .unwrap_or(false);
+            s.last = Some(now);
+            let text = arboard::Clipboard::new()
+                .and_then(|mut cb| cb.get_text())
+                .unwrap_or_default();
+            let _ = app.emit("double-copy", serde_json::json!({ "text": text }));
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_focus();
+            }
+        })?;
+        return Ok(());
+    }
+
     use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
     let (mods, code) = match shortcut {
         "cmd-shift-c" => {

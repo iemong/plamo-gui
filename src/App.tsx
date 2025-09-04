@@ -182,34 +182,35 @@ function App() {
         <HeaderTabs tab={tab} onChange={setTab} />
         <div className="flex items-center gap-2">
           <ShortcutHint label={(function () {
-            const sc = settings?.double_copy?.shortcut ?? "cmd-shift-c";
+            const sc = settings?.double_copy?.shortcut ?? "Super+Shift+C";
             const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
-            const labelFor = (key: string) => {
-              if (isMac) {
-                switch (key) {
-                  case "cmd-shift-c":
-                    return "⌘⇧C でクイック翻訳";
-                  case "cmd-alt-c":
-                    return "⌘⌥C でクイック翻訳";
-                  case "cmd-k":
-                    return "⌘K でクイック翻訳";
-                  default:
-                    return "⌘⇧C でクイック翻訳";
-                }
-              } else {
-                switch (key) {
-                  case "cmd-shift-c":
-                    return "Ctrl+Shift+C to Quick Translate";
-                  case "cmd-alt-c":
-                    return "Ctrl+Alt+C to Quick Translate";
-                  case "cmd-k":
-                    return "Ctrl+K to Quick Translate";
-                  default:
-                    return "Ctrl+Shift+C to Quick Translate";
-                }
+            const mapLegacy = (k: string) => {
+              switch (k) {
+                case "cmd-shift-c":
+                  return isMac ? "⌘⇧C" : "Ctrl+Shift+C";
+                case "cmd-alt-c":
+                  return isMac ? "⌘⌥C" : "Ctrl+Alt+C";
+                case "cmd-k":
+                  return isMac ? "⌘K" : "Ctrl+K";
+                default:
+                  return k;
               }
             };
-            return labelFor(sc);
+            const pretty = (spec: string) => {
+              if (!spec.includes("+")) return mapLegacy(spec) + (isMac ? " でクイック翻訳" : " to Quick Translate");
+              const parts = spec.split("+");
+              const mods = parts.slice(0, -1);
+              const key = parts.slice(-1)[0];
+              const sym = (m: string) => {
+                if (!isMac) return m;
+                return m === "Super" ? "⌘" : m === "Shift" ? "⇧" : m === "Alt" ? "⌥" : m === "Control" ? "⌃" : m;
+              };
+              const left = isMac ? mods.map(sym).join("") : mods.join("+");
+              const k = key.length === 1 ? key.toUpperCase() : key;
+              const txt = isMac ? `${left}${k}` : `${left}+${k}`;
+              return isMac ? `${txt} でクイック翻訳` : `${txt} to Quick Translate`;
+            };
+            return pretty(sc);
           })()} />
           <button
             className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm hover:bg-accent"
