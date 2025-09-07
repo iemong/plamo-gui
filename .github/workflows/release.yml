@@ -24,6 +24,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # タグ/履歴も取得してタグ存在判定を安定化
 
       # ※ Bun向け: お手元のパッケージマネージャに合わせて依存関係をインストールしてください
       - name: Cache Bun modules
@@ -103,11 +105,3 @@ jobs:
           # releaseDraft: true 一旦リリースをドラフトとして作成したい場合はコメントアウトを外す
           includeDebug: true
           args: ${{ matrix.args }}
-
-      - name: Set Version Tag
-        run: |
-          if git rev-parse "${{ env.VERSION_TAG }}" >/dev/null 2>&1; then echo "Tag ${{ env.VERSION_TAG }} already exists. Skipping tagging."
-          else echo "Tagging with version: ${{ env.VERSION_TAG }}"
-            git tag ${{ env.VERSION_TAG }}
-            git push origin ${{ env.VERSION_TAG }}
-          fi
