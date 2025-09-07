@@ -23,3 +23,4 @@ dist-ssr
 *.sln
 *.sw?
 certificate-base64.txt
+settings.local.json

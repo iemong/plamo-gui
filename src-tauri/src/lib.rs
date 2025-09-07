@@ -399,8 +399,19 @@ pub fn run() {
                 .double_copy
                 .shortcut
                 .unwrap_or_else(|| "cmd-shift-c".into());
-            register_quick_shortcut(&app_handle, double_copy.clone(), &key)
-                .map_err(|e| anyhow!(e.to_string()))?;
+            // グローバルショートカット登録失敗でアプリが落ちないようにする
+            if let Err(e) = register_quick_shortcut(&app_handle, double_copy.clone(), &key) {
+                #[cfg(debug_assertions)]
+                eprintln!("[global-shortcut] register failed: {}", e);
+                // フロントに通知（UIで案内を出す想定）
+                let _ = app_handle.emit(
+                    "global-shortcut:register-error",
+                    serde_json::json!({
+                        "message": e.to_string(),
+                    }),
+                );
+                // ここで Err を返すと macOS の didFinishLaunching 経由で panic/abort するため握り潰して継続
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
