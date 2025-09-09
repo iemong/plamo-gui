@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, process::Stdio, sync::Arc};
 use tauri::{Emitter, Manager};
+// Clipboard read is handled via arboard for now; plugin provides JS-side APIs.
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,

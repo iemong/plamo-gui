@@ -48,8 +48,16 @@ function App() {
   // Handle double-copy signal from backend
   useEffect(() => {
     const un = listen<{ text?: string }>("double-copy", async (e) => {
-      const clip = (e.payload?.text ?? "").trim();
-      const text = clip.length > 0 ? clip : input;
+      let text = (e.payload?.text ?? "").trim();
+      if (!text) {
+        try {
+          const t = await navigator.clipboard.readText();
+          if (t && t.trim()) text = t.trim();
+        } catch {
+          // ignore
+        }
+      }
+      if (!text) text = input; // 最後のフォールバック
       if (text && settings?.double_copy.enabled !== false) {
         setInput(text);
         setMiniOpen(false);
