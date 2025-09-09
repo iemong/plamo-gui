@@ -194,11 +194,20 @@ fn check_plamo_cli(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-async fn abort_translation(tasks: tauri::State<'_, TaskMap>, id: String) -> Result<(), String> {
+async fn abort_translation(
+    app: tauri::AppHandle,
+    tasks: tauri::State<'_, TaskMap>,
+    id: String,
+) -> Result<(), String> {
     let mut map = tasks.lock().await;
     if let Some(mut child) = map.remove(&id) {
         let _ = child.kill().await;
     }
+    // 明示的に中断完了を通知
+    let _ = app.emit(
+        &format!("translate:{}:done", id),
+        serde_json::json!({"ok": false, "reason": "aborted"}),
+    );
     Ok(())
 }
 
@@ -334,9 +343,8 @@ fn register_quick_shortcut<R: tauri::Runtime>(
                 .map(|t| now.duration_since(t) < StdDuration::from_millis(500))
                 .unwrap_or(false);
             s.last = Some(now);
-            let text = arboard::Clipboard::new()
-                .and_then(|mut cb| cb.get_text())
-                .unwrap_or_default();
+            // DeepL 風: ショートカット押下時に "Copy" をシミュレートし、選択範囲を取得
+            let text = simulate_copy_and_read();
             let _ = app.emit("double-copy", serde_json::json!({ "text": text }));
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_focus();
@@ -397,11 +405,9 @@ fn register_quick_shortcut<R: tauri::Runtime>(
             .map(|t| now.duration_since(t) < StdDuration::from_millis(500))
             .unwrap_or(false);
         s.last = Some(now);
-        // 今は単押しで即発火（ダブル検出ロジックは将来的に活用）
+        // DeepL 風: 単押しで Copy シミュレート→取得（将来は設定でダブル押しに対応可能）
         if true || is_double {
-            let text = arboard::Clipboard::new()
-                .and_then(|mut cb| cb.get_text())
-                .unwrap_or_default();
+            let text = simulate_copy_and_read();
             let _ = app.emit("double-copy", serde_json::json!({ "text": text }));
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_focus();
@@ -409,6 +415,30 @@ fn register_quick_shortcut<R: tauri::Runtime>(
         }
     })?;
     Ok(())
+}
+
+fn simulate_copy_and_read() -> String {
+    // 1) 選択範囲に対して OS の Copy をシミュレート
+    use enigo::{Enigo, Key, KeyboardControllable};
+    let mut enigo = Enigo::new();
+    #[cfg(target_os = "macos")]
+    {
+        enigo.key_down(Key::Meta);
+        enigo.key_click(Key::Layout('c'));
+        enigo.key_up(Key::Meta);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        enigo.key_down(Key::Control);
+        enigo.key_click(Key::Layout('c'));
+        enigo.key_up(Key::Control);
+    }
+    // 2) クリップボード更新待ち（短い待機）
+    std::thread::sleep(std::time::Duration::from_millis(120));
+    // 3) クリップボードから取得
+    arboard::Clipboard::new()
+        .and_then(|mut cb| cb.get_text())
+        .unwrap_or_default()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

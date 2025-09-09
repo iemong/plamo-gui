@@ -23,6 +23,7 @@ function App() {
   const [progress, setProgress] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const currentJob = useRef<string | null>(null);
+  const lastSig = useRef<string | null>(null);
   const listeners = useRef<UnlistenFn[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -81,6 +82,8 @@ function App() {
 
   const translate = async (text: string) => {
     if (status === "translating") return;
+    // 直前に実行したシグネチャを記録（自動翻訳の重複実行防止に利用）
+    lastSig.current = `${from}|${to}|${text.trim()}`;
     setOutput("");
     setStatus("translating");
     setProgress(null);
@@ -97,12 +100,22 @@ function App() {
       // 安全策: 一切チャンクが来なかった場合の最終出力
       if (!output) setOutput(e.payload);
     });
-    const u3 = await listen(`translate:${id}:done`, async () => {
-      setStatus("done");
-      setProgress(1);
+    const u3 = await listen<{ ok?: boolean; reason?: string }>(`translate:${id}:done`, async (e) => {
+      const payload = e.payload || {};
+      const failed = payload.ok === false;
+      // 共通のクリーンアップ
       listeners.current.forEach((f) => f());
       listeners.current = [];
       currentJob.current = null;
+      if (failed) {
+        // 中断・タイムアウト等は履歴追加やコピーを行わず、待機状態へ
+        setStatus("ready");
+        setProgress(null);
+        setMiniOpen(false);
+        return;
+      }
+      setStatus("done");
+      setProgress(1);
       const item: HistoryItem = {
         id: id,
         input: text,
@@ -122,7 +135,6 @@ function App() {
           // ignore
         }
       }
-      // 右ペイン表示を優先し、完了時もミニウィンドウは開かない
       setMiniOpen(false);
     });
     listeners.current = [u1, u2, uFinal, u3];
@@ -174,20 +186,17 @@ function App() {
   };
 
   // 入力・言語変更時のデバウンス自動翻訳（1秒）
+  // 変換中は新規実行しない（中断・再実行もしない）。
+  // 直近と同一のシグネチャ（from|to|input）は再実行しない。
   useEffect(() => {
     if (!input.trim()) return;
     const t = setTimeout(async () => {
-      // 実行中ならキャンセルしてから再実行
-      if (status === "translating" && currentJob.current) {
-        await invoke("abort_translation", { id: currentJob.current }).catch(() => {});
-        listeners.current.forEach((f) => f());
-        listeners.current = [];
-        currentJob.current = null;
-      }
+      if (status === "translating") return; // 実行中はスキップ
+      const sig = `${from}|${to}|${input.trim()}`;
+      if (lastSig.current === sig) return; // 同一条件の連続実行を抑止
       translate(input);
     }, 1000);
     return () => clearTimeout(t);
-    // from/to 変更時も反映
   }, [input, from, to]);
 
   return (
