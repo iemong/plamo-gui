@@ -35,3 +35,6 @@
 ## セキュリティ/設定
 - 機密情報をコミットしない。アプリ ID や権限は `src-tauri/tauri.conf.json` と `capabilities/*.json` を確認。
 - 外部リンクやアプリ起動は `@tauri-apps/plugin-opener` の権限設定を更新してから利用。
+
+## ドキュメント
+- plamo-translate の使い方は `docs/plamo-translate.md` を参照。

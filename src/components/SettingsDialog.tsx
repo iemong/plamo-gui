@@ -1,4 +1,5 @@
 import React from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Settings } from "@/types";
 
 type Props = {
@@ -94,6 +95,8 @@ export function SettingsDialog({ open, settings, onChange, onClose, onSave }: Pr
             />
           </label>
 
+          <PlamoPathField settings={settings} onChange={onChange} />
+
           <div className="grid gap-2 rounded-lg border p-3">
             <div className="text-sm font-medium">Double Copy</div>
             <label className="flex items-center gap-2 text-sm">
@@ -164,5 +167,55 @@ export function SettingsDialog({ open, settings, onChange, onClose, onSave }: Pr
         </div>
       </div>
     </div>
+  );
+}
+
+function PlamoPathField({ settings, onChange }: { settings: Settings; onChange: (s: Settings) => void }) {
+  const [checking, setChecking] = React.useState(false);
+  const [result, setResult] = React.useState<{ ok: boolean; bin?: string; resolved?: string; error?: string } | null>(null);
+  return (
+    <label className="grid gap-1 text-sm">
+      <span className="text-muted-foreground">plamo-translate path</span>
+      <div className="flex items-center gap-2">
+        <input
+          className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+          placeholder="/opt/homebrew/bin/plamo-translate または ~/.local/bin/plamo-translate"
+          value={settings.plamo.binPath ?? ""}
+          onChange={(e) => onChange({ ...settings, plamo: { ...settings.plamo, binPath: e.target.value } })}
+        />
+        <button
+          type="button"
+          className="whitespace-nowrap rounded-md border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+          disabled={checking}
+          onClick={async () => {
+            setChecking(true);
+            try {
+              const r = (await invoke("check_plamo_cli")) as any;
+              setResult(r);
+              if (r && r.ok) {
+                const newPath = (r.resolved as string | undefined) ?? (r.bin as string | undefined);
+                if (newPath) {
+                  onChange({ ...settings, plamo: { ...settings.plamo, binPath: newPath } });
+                }
+              }
+            } catch (e) {
+              setResult({ ok: false, error: String(e) });
+            } finally {
+              setChecking(false);
+            }
+          }}
+        >
+          {checking ? "Checking..." : "Check"}
+        </button>
+      </div>
+      <div className="text-xs text-muted-foreground">空の場合は環境変数 PATH から探索します。環境変数 PLAMO_TRANSLATE_PATH も使用できます。</div>
+      {result && (
+        <div className={`text-xs ${result.ok ? "text-green-600" : "text-red-600"}`}>
+          {result.ok
+            ? `Found: ${result.resolved || result.bin || "plamo-translate"}（入力欄に反映済み）`
+            : `Not found: ${result.error || "unknown error"}`}
+        </div>
+      )}
+    </label>
   );
 }

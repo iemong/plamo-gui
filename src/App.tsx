@@ -16,7 +16,7 @@ import { Languages, ArrowLeftRight, Settings as SettingsIcon, Copy, FileText, Fi
 function App() {
   const [tab, setTab] = useState<"translate" | "history">("translate");
   const [from, setFrom] = useState<string>("auto");
-  const [to, setTo] = useState<string>("ja");
+  const [to, setTo] = useState<string>("en");
   const [input, setInput] = useState<string>("");
   const [output, setOutput] = useState<string>("");
   const [status, setStatus] = useState<"ready" | "translating" | "done" | "error">("ready");
@@ -144,6 +144,13 @@ function App() {
         glossary: null,
       },
     }).catch(() => {
+      // 後片付け
+      try {
+        listeners.current.forEach((f) => f());
+      } catch {}
+      listeners.current = [];
+      currentJob.current = null;
+      setProgress(null);
       setStatus("error");
     });
   };

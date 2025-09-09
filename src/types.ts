@@ -9,7 +9,7 @@ export type HistoryItem = {
 
 export type Settings = {
   engine: string;
-  plamo: { precision: "4bit" | "8bit" | "bf16"; server: boolean };
+  plamo: { precision: "4bit" | "8bit" | "bf16"; server: boolean; binPath?: string };
   style_preset: "business" | "tech" | "casual";
   glossary_path?: string;
   timeout_ms: number;

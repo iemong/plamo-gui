@@ -24,6 +24,8 @@ pub struct Settings {
 pub struct PlamoCfg {
     pub precision: String,
     pub server: bool,
+    #[serde(rename = "binPath", skip_serializing_if = "Option::is_none")]
+    pub bin_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +44,7 @@ impl Default for Settings {
             plamo: PlamoCfg {
                 precision: "4bit".into(),
                 server: false,
+                bin_path: None,
             },
             style_preset: "business".into(),
             glossary_path: None,
@@ -86,7 +89,13 @@ async fn translate_plamo(
     tasks: tauri::State<'_, TaskMap>,
     opts: TranslateOptions,
 ) -> Result<(), String> {
-    let mut cmd = Command::new("plamo-translate");
+    // 実行バイナリの解決: 設定値 > 環境変数 > PATH
+    let settings = read_settings_from_disk(&app);
+    let bin = std::env::var("PLAMO_TRANSLATE_PATH")
+        .ok()
+        .or(settings.plamo.bin_path)
+        .unwrap_or_else(|| "plamo-translate".into());
+    let mut cmd = Command::new(bin);
     // ざっくりとした引数。実際のCLI仕様に合わせて調整する前提。
     if let Some(from) = &opts.from {
         cmd.arg("--from").arg(from);
@@ -100,35 +109,9 @@ async fn translate_plamo(
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(_e) => {
-            // Fallback: CLI が無い場合は擬似ストリーミング
-            let id = opts.id.clone();
-            let app2 = app.clone();
-            tokio::spawn(async move {
-                let words: Vec<&str> = opts.input.split_whitespace().collect();
-                let mut buf = String::new();
-                for (i, w) in words.iter().enumerate() {
-                    let piece = format!("{} ", w);
-                    buf.push_str(&piece);
-                    let _ = app2.emit(&format!("translate:{}:chunk", id), piece);
-                    tokio::time::sleep(Duration::from_millis(120)).await;
-                    // simple progress event (optional): percentage
-                    let _ = app2.emit(
-                        &format!("translate:{}:progress", id),
-                        (i + 1) as f32 / words.len().max(1) as f32,
-                    );
-                }
-                let _ = app2.emit(&format!("translate:{}:final", id), buf);
-                let _ = app2.emit(
-                    &format!("translate:{}:done", id),
-                    serde_json::json!({"ok": true}),
-                );
-            });
-            return Ok(());
-        }
-    };
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("failed to start plamo-translate: {}", e))?;
 
     let id = opts.id.clone();
     let stdout = child
@@ -178,6 +161,35 @@ async fn translate_plamo(
         }
     });
     Ok(())
+}
+
+#[tauri::command]
+fn check_plamo_cli(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    use std::process::Command as StdCommand;
+    let settings = read_settings_from_disk(&app);
+    let bin = std::env::var("PLAMO_TRANSLATE_PATH")
+        .ok()
+        .or(settings.plamo.bin_path)
+        .unwrap_or_else(|| "plamo-translate".into());
+    let resolved = resolve_bin_path(&bin);
+    let status = StdCommand::new(&bin)
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    match status {
+        Ok(s) => Ok(serde_json::json!({
+            "ok": s.success(),
+            "bin": bin,
+            "resolved": resolved,
+        })),
+        Err(e) => Ok(serde_json::json!({
+            "ok": false,
+            "bin": bin,
+            "resolved": resolved,
+            "error": e.to_string(),
+        })),
+    }
 }
 
 #[tauri::command]
@@ -270,6 +282,34 @@ fn read_settings_from_disk(app: &tauri::AppHandle) -> Settings {
         }
     }
     Settings::default()
+}
+
+fn resolve_bin_path(bin: &str) -> Option<String> {
+    use std::path::{Path, PathBuf};
+    // If explicit path, canonicalize or return as-is
+    if bin.contains('/') || bin.contains('\\') || Path::new(bin).is_absolute() {
+        return std::fs::canonicalize(bin)
+            .ok()
+            .or_else(|| Some(PathBuf::from(bin)))
+            .map(|p| p.to_string_lossy().into_owned());
+    }
+    // Search in PATH
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let mut cand = dir.join(bin);
+        if cfg!(windows) {
+            if !cand.exists() {
+                cand = dir.join(format!("{}.exe", bin));
+            }
+        }
+        if cand.exists() {
+            return std::fs::canonicalize(&cand)
+                .ok()
+                .or_else(|| Some(cand))
+                .map(|p| p.to_string_lossy().into_owned());
+        }
+    }
+    None
 }
 
 fn register_quick_shortcut<R: tauri::Runtime>(
@@ -389,7 +429,8 @@ pub fn run() {
             save_settings,
             append_history,
             load_history,
-            update_shortcut
+            update_shortcut,
+            check_plamo_cli
         ])
         .setup(move |app| {
             // Register quick shortcut from saved settings
